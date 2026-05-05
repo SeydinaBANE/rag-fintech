@@ -1,9 +1,15 @@
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import streamlit as st
+import pandas as pd
 from rag.engine import repondre
+
+
+def _afficher_sql_resultats(sql, resultats):
+    if sql:
+        with st.expander("Voir le SQL généré"):
+            st.code(sql, language="sql")
+    if resultats:
+        with st.expander("Voir les données brutes"):
+            st.dataframe(pd.DataFrame(resultats))
 
 st.set_page_config(
     page_title="Assistant IA Fintech",
@@ -49,13 +55,7 @@ if "messages" not in st.session_state:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if "sql" in msg and msg["sql"]:
-            with st.expander("Voir le SQL généré"):
-                st.code(msg["sql"], language="sql")
-        if "resultats" in msg and msg["resultats"]:
-            with st.expander("Voir les données brutes"):
-                import pandas as pd
-                st.dataframe(pd.DataFrame(msg["resultats"]))
+        _afficher_sql_resultats(msg.get("sql"), msg.get("resultats"))
 
 # ── INPUT ──
 question = st.chat_input("Posez votre question...")
@@ -74,19 +74,11 @@ if question:
             result = repondre(question)
 
         st.markdown(result["reponse"])
-
-        if result["sql"]:
-            with st.expander("Voir le SQL généré"):
-                st.code(result["sql"], language="sql")
-
-        if result["resultats"]:
-            with st.expander("Voir les données brutes"):
-                import pandas as pd
-                st.dataframe(pd.DataFrame(result["resultats"]))
+        _afficher_sql_resultats(result["sql"], result["resultats"])
 
     st.session_state.messages.append({
-        "role":      "assistant",
-        "content":   result["reponse"],
-        "sql":       result["sql"],
+        "role": "assistant",
+        "content": result["reponse"],
+        "sql": result["sql"],
         "resultats": result["resultats"]
     })

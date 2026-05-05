@@ -12,8 +12,6 @@ uv run streamlit run dashboard/app.py --server.port 8502
 # Installer les dépendances
 uv sync
 
-# Lancer le point d'entrée principal
-uv run python main.py
 ```
 
 PostgreSQL tourne sur le port 5433 (non standard). Nécessite Docker avec le conteneur `postgres-fintech` en cours d'exécution.

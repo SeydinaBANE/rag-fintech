@@ -80,21 +80,21 @@ Formule une réponse naturelle et professionnelle.""")
 
 def repondre(question: str) -> dict:
     try:
-        sql      = generer_sql(question)
+        sql = generer_sql(question)
         resultats = executer_sql(sql)
-        reponse  = formuler_reponse(question, sql, resultats)
+        reponse = formuler_reponse(question, sql, resultats)
         return {
-            "reponse":   reponse,
-            "sql":       sql,
+            "reponse": reponse,
+            "sql": sql,
             "resultats": resultats,
-            "erreur":    None
+            "erreur": None
         }
     except Exception as e:
         return {
-            "reponse":   f"Je n'ai pas pu répondre à cette question. Erreur : {str(e)}",
-            "sql":       None,
+            "reponse": f"Je n'ai pas pu répondre à cette question. Erreur : {str(e)}",
+            "sql": None,
             "resultats": [],
-            "erreur":    str(e)
+            "erreur": str(e)
         }
         
 
