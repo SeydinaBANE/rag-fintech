@@ -99,14 +99,14 @@ def repondre(question: str) -> dict:
         
 
 
-questions = [
-    'Quel client a le plus de transactions frauduleuses ?',
-    'Quel est le montant moyen des fraudes par heure de la nuit ?'
-]
-
-for q in questions:
-    print(f'Q: {q}')
-    r = repondre(q)
-    print(f'R: {r["reponse"]}')
-    print(f'SQL: {r["sql"]}')
-    print('---')
+if __name__ == "__main__":
+    questions = [
+        'Quel client a le plus de transactions frauduleuses ?',
+        'Quel est le montant moyen des fraudes par heure de la nuit ?'
+    ]
+    for q in questions:
+        print(f'Q: {q}')
+        r = repondre(q)
+        print(f'R: {r["reponse"]}')
+        print(f'SQL: {r["sql"]}')
+        print('---')
