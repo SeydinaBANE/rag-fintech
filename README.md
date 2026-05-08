@@ -5,6 +5,7 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.57+-red?logo=streamlit&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue?logo=postgresql&logoColor=white)
 ![Claude Haiku](https://img.shields.io/badge/LLM-Claude%20Haiku-orange?logo=anthropic&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/Licence-MIT-lightgrey)
 
 Chatbot intelligent qui répond à des questions en langage naturel sur des données financières via **Text-to-SQL** et **LLM**. Conçu pour l'analyse de fraude dans le contexte fintech ouest-africain.
@@ -95,51 +96,41 @@ Streamlit Chat UI
 
 ## 🚀 Lancer le projet
 
-### Prérequis
+### ⚡ Avec Docker (recommandé)
 
-- [Docker](https://www.docker.com/)
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) (gestionnaire de paquets)
-- Clé API [OpenRouter](https://openrouter.ai/)
-
-### 1. Cloner le projet
+**Prérequis :** [Docker](https://www.docker.com/) + clé API [OpenRouter](https://openrouter.ai/)
 
 ```bash
-git clone https://github.com/SeydinaBANE/projet-rag-fintech.git
-cd projet-rag-fintech
-```
+# 1. Cloner le projet
+git clone https://github.com/SeydinaBANE/rag-fintech.git
+cd rag-fintech
 
-### 2. Configurer les variables d'environnement
-
-```bash
+# 2. Configurer les variables d'environnement
 cp .env.example .env
-# Remplis les valeurs dans .env
+# Renseigner OPENROUTER_API_KEY, DB_USER, DB_PASSWORD dans .env
+
+# 3. Démarrer (app + PostgreSQL + données de test)
+docker compose up --build
 ```
 
-```env
-OPENROUTER_API_KEY=ta_clé_api
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-DB_HOST=localhost
-DB_PORT=5433
-DB_NAME=fintech
-DB_USER=ton_user
-DB_PASSWORD=ton_mot_de_passe
-```
+Ouvre [http://localhost:8502](http://localhost:8502)
 
-### 3. Lancer la base de données PostgreSQL
+> La base de données est initialisée automatiquement avec le schéma et des données de test via `init.sql`.  
+> Pour utiliser tes propres données, remplace `init.sql` par un export `pg_dump` de ta base.
+
+---
+
+### 🛠️ En local (sans Docker)
+
+**Prérequis :** Python 3.11+, [uv](https://docs.astral.sh/uv/), PostgreSQL sur le port 5433
 
 ```bash
-docker run --name postgres-fintech \
-  -e POSTGRES_USER=ton_user \
-  -e POSTGRES_PASSWORD=ton_mot_de_passe \
-  -e POSTGRES_DB=fintech \
-  -p 5433:5432 \
-  -d postgres:15
-```
+git clone https://github.com/SeydinaBANE/rag-fintech.git
+cd rag-fintech
 
-### 4. Installer les dépendances et lancer l'assistant
+cp .env.example .env
+# Renseigner toutes les variables dans .env
 
-```bash
 uv sync
 uv run streamlit run dashboard/app.py --server.port 8502
 ```
@@ -153,12 +144,16 @@ Ouvre [http://localhost:8502](http://localhost:8502)
 ```
 projet-rag-fintech/
 ├── rag/
-│   └── engine.py        # Moteur RAG — pipeline Text-to-SQL
+│   └── engine.py          # Moteur RAG — pipeline Text-to-SQL
 ├── dashboard/
-│   └── app.py           # Interface Streamlit Chat
-├── screenshot/          # Captures d'écran de l'interface
-├── .env.example         # Modèle de variables d'environnement
-├── pyproject.toml       # Dépendances du projet
+│   └── app.py             # Interface Streamlit Chat
+├── screenshot/            # Captures d'écran de l'interface
+├── Dockerfile             # Image Docker de l'application
+├── docker-compose.yml     # Orchestration app + PostgreSQL
+├── init.sql               # Schéma et données de test PostgreSQL
+├── .dockerignore
+├── .env.example           # Modèle de variables d'environnement
+├── pyproject.toml         # Dépendances du projet
 └── README.md
 ```
 
