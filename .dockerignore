@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git/
+.pytest_cache/
+screenshot/
+tests/
+.python-version
+*.md
