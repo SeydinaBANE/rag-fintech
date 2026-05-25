@@ -18,3 +18,9 @@ wheels/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Caches outils
+.ruff_cache/
+
+# Claude Code
+.claude/

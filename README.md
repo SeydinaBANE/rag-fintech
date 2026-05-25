@@ -185,8 +185,11 @@ projet-rag-fintech/
 ├── .pre-commit-config.yaml    # Hooks pre-commit (ruff)
 ├── .env.example               # Modèle de variables d'environnement
 ├── pyproject.toml             # Dépendances du projet
+├── fly.toml                   # Configuration Fly.io (région, ressources, healthcheck)
 └── README.md
 ```
+
+> Documentation technique complète : [`docs/TECHNICAL.md`](docs/TECHNICAL.md)
 
 ---
 
@@ -217,7 +220,7 @@ fly secrets set \
 make fly-deploy
 ```
 
-Le `release_command` dans `fly.toml` exécute `scripts/init_db.py` avant chaque déploiement — il crée les tables si elles n't existent pas et insère les données de test uniquement si la base est vide.
+Le `release_command` dans `fly.toml` exécute `scripts/init_db.py` avant chaque déploiement — il crée les tables si elles n'existent pas et insère les données de test uniquement si la base est vide.
 
 ### Commandes utiles
 

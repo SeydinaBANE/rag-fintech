@@ -31,6 +31,11 @@ make db-reset          # destroy volume and reseed from init.sql
 make docker-up         # docker compose up --build -d
 make docker-down       # docker compose down
 
+# Fly.io
+make fly-deploy   # déployer l'image main sur Fly.io
+make fly-logs     # streamer les logs en temps réel
+make fly-ssh      # ouvrir un shell dans le conteneur
+
 # Run only the engine directly (executes two example queries against live DB)
 uv run python rag/engine.py
 ```
