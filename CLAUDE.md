@@ -14,6 +14,7 @@ make run               # uv run streamlit run dashboard/app.py --server.port 850
 
 # Run tests (no DB or API connection needed — all external deps are mocked at import time)
 make test              # uv run pytest -v
+make coverage          # pytest --cov=rag --cov-report=term-missing --cov-fail-under=70 + HTML in htmlcov/
 uv run pytest tests/test_engine.py -v   # single file
 
 # Lint + format
@@ -79,10 +80,14 @@ Two workflows in `.github/workflows/`:
 
 - **`ci.yml`** — triggers on every push and PR to `main`. Two parallel jobs:
   - `lint` — `ruff check` + `ruff format --check`
-  - `test` — `pytest` (no live DB or API needed, all mocked at import time)
-- **`cd.yml`** — triggers on push to `main` and on published releases. Builds the Docker image and pushes to GitHub Container Registry (`ghcr.io/seydinabane/rag-fintech`). Uses `GITHUB_TOKEN` (no extra secrets required). Tags: `main`, `sha-<short>`, semver on releases.
+  - `test` — `pytest --cov=rag --cov-fail-under=70` (coverage minimum 70 %, no live DB or API needed)
+- **`cd.yml`** — triggers via `workflow_run` on CI completion (only if CI succeeded) and on published releases. Builds and pushes to GitHub Container Registry (`ghcr.io/seydinabane/rag-fintech`). Uses `GITHUB_TOKEN` — no extra secrets required. Tags: `main`, `sha-<short>`, semver on releases.
 
-The CD job runs independently of CI — if you want to gate it on CI passing, add `needs: [lint, test]` after extracting CI jobs to a reusable workflow.
+**Gate CD → CI** : the CD never runs if lint or tests fail — enforced via `workflow_run` + `conclusion == 'success'` condition.
+
+**Dependabot** (`.github/dependabot.yml`) scans `pip` + `github-actions` every Monday and opens PRs automatically.
+
+**PR template** (`.github/PULL_REQUEST_TEMPLATE.md`) pre-fills Description, Type de changement, and Test plan checklist on every new PR.
 
 ## Notes
 

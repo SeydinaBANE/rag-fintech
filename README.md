@@ -2,6 +2,7 @@
 
 ![CI](https://github.com/SeydinaBANE/rag-fintech/actions/workflows/ci.yml/badge.svg)
 ![CD](https://github.com/SeydinaBANE/rag-fintech/actions/workflows/cd.yml/badge.svg)
+![Coverage](https://img.shields.io/badge/coverage-82%25-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1.2+-green?logo=chainlink&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.57+-red?logo=streamlit&logoColor=white)
@@ -146,12 +147,15 @@ Ouvre [http://localhost:8502](http://localhost:8502)
 
 ```bash
 make test        # lance pytest (aucune connexion DB ou LLM requise)
+make coverage    # pytest + rapport de couverture (seuil 70 %, rapport HTML dans htmlcov/)
 make lint        # ruff check
 make format      # ruff format
 make check       # lint + test (utilisé en CI)
 ```
 
 Les hooks pre-commit (lint + format) s'installent automatiquement avec `make install` et s'exécutent à chaque `git commit`.
+
+Les **dépendances sont mises à jour automatiquement** par Dependabot chaque lundi (pip + GitHub Actions).
 
 ---
 
@@ -160,9 +164,11 @@ Les hooks pre-commit (lint + format) s'installent automatiquement avec `make ins
 ```
 projet-rag-fintech/
 ├── .github/
-│   └── workflows/
-│       ├── ci.yml             # Lint + tests à chaque push/PR
-│       └── cd.yml             # Build & push image Docker (ghcr.io)
+│   ├── workflows/
+│   │   ├── ci.yml             # Lint + tests + coverage (seuil 70 %)
+│   │   └── cd.yml             # Build & push image Docker (ghcr.io), gatée sur CI
+│   ├── dependabot.yml         # Mises à jour automatiques des dépendances
+│   └── PULL_REQUEST_TEMPLATE.md  # Template PR
 ├── rag/
 │   └── engine.py              # Moteur RAG — pipeline Text-to-SQL
 ├── dashboard/

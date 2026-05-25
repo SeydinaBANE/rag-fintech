@@ -13,3 +13,8 @@ wheels/
 .env
 .env.local
 .env.*.local
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
