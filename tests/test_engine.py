@@ -8,7 +8,6 @@ with patch("sqlalchemy.create_engine"), patch("langchain_openai.ChatOpenAI"):
 
 
 class TestGenererSQL(unittest.TestCase):
-
     def setUp(self):
         self.mock_llm = MagicMock()
         engine_module.llm = self.mock_llm
@@ -32,7 +31,6 @@ class TestGenererSQL(unittest.TestCase):
 
 
 class TestExecuterSQL(unittest.TestCase):
-
     def _mock_engine(self, colonnes, lignes):
         mock_result = MagicMock()
         mock_result.keys.return_value = colonnes
@@ -60,7 +58,6 @@ class TestExecuterSQL(unittest.TestCase):
 
 
 class TestRepondre(unittest.TestCase):
-
     def _setup_mocks(self, sql_content="SELECT COUNT(*) FROM transactions", lignes=None):
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = MagicMock(content=sql_content)

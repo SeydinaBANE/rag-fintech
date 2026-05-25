@@ -1,5 +1,7 @@
 # 🤖 Assistant IA RAG — Fintech Afrique de l'Ouest
 
+![CI](https://github.com/SeydinaBANE/rag-fintech/actions/workflows/ci.yml/badge.svg)
+![CD](https://github.com/SeydinaBANE/rag-fintech/actions/workflows/cd.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1.2+-green?logo=chainlink&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.57+-red?logo=streamlit&logoColor=white)
@@ -115,7 +117,7 @@ docker compose up --build
 
 Ouvre [http://localhost:8502](http://localhost:8502)
 
-> La base de données est initialisée automatiquement avec le schéma et des données de test via `init.sql`.  
+> La base de données est initialisée automatiquement avec le schéma et des données de test via `init.sql`.
 > Pour utiliser tes propres données, remplace `init.sql` par un export `pg_dump` de ta base.
 
 ---
@@ -131,11 +133,25 @@ cd rag-fintech
 cp .env.example .env
 # Renseigner toutes les variables dans .env
 
-uv sync
-uv run streamlit run dashboard/app.py --server.port 8502
+make install     # installe toutes les dépendances (prod + dev)
+make db-up       # démarre uniquement le conteneur PostgreSQL
+make run         # lance Streamlit sur :8502
 ```
 
 Ouvre [http://localhost:8502](http://localhost:8502)
+
+---
+
+## 🧪 Développement
+
+```bash
+make test        # lance pytest (aucune connexion DB ou LLM requise)
+make lint        # ruff check
+make format      # ruff format
+make check       # lint + test (utilisé en CI)
+```
+
+Les hooks pre-commit (lint + format) s'installent automatiquement avec `make install` et s'exécutent à chaque `git commit`.
 
 ---
 
@@ -143,17 +159,24 @@ Ouvre [http://localhost:8502](http://localhost:8502)
 
 ```
 projet-rag-fintech/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml             # Lint + tests à chaque push/PR
+│       └── cd.yml             # Build & push image Docker (ghcr.io)
 ├── rag/
-│   └── engine.py          # Moteur RAG — pipeline Text-to-SQL
+│   └── engine.py              # Moteur RAG — pipeline Text-to-SQL
 ├── dashboard/
-│   └── app.py             # Interface Streamlit Chat
-├── screenshot/            # Captures d'écran de l'interface
-├── Dockerfile             # Image Docker de l'application
-├── docker-compose.yml     # Orchestration app + PostgreSQL
-├── init.sql               # Schéma et données de test PostgreSQL
-├── .dockerignore
-├── .env.example           # Modèle de variables d'environnement
-├── pyproject.toml         # Dépendances du projet
+│   └── app.py                 # Interface Streamlit Chat
+├── tests/
+│   └── test_engine.py         # Tests unitaires (mocks, sans DB)
+├── screenshot/                # Captures d'écran de l'interface
+├── Dockerfile                 # Image Docker de l'application
+├── docker-compose.yml         # Orchestration app + PostgreSQL
+├── init.sql                   # Schéma et données de test PostgreSQL
+├── Makefile                   # Commandes de développement
+├── .pre-commit-config.yaml    # Hooks pre-commit (ruff)
+├── .env.example               # Modèle de variables d'environnement
+├── pyproject.toml             # Dépendances du projet
 └── README.md
 ```
 
