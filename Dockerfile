@@ -10,6 +10,8 @@ RUN uv sync --no-dev --frozen
 
 COPY rag/ ./rag/
 COPY dashboard/ ./dashboard/
+COPY scripts/ ./scripts/
+COPY init.sql ./
 
 ENV PATH="/app/.venv/bin:$PATH"
 

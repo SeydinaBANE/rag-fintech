@@ -1,4 +1,4 @@
-.PHONY: install dev test coverage lint format check db-up db-down db-reset run docker-up docker-down
+.PHONY: install dev test coverage lint format check db-up db-down db-reset run docker-up docker-down fly-deploy fly-logs fly-ssh
 
 install:
 	uv sync --all-groups
@@ -39,3 +39,12 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+fly-deploy:
+	flyctl deploy --image ghcr.io/seydinabane/rag-fintech:main
+
+fly-logs:
+	flyctl logs
+
+fly-ssh:
+	flyctl ssh console

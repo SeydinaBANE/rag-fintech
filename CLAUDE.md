@@ -81,13 +81,21 @@ Two workflows in `.github/workflows/`:
 - **`ci.yml`** — triggers on every push and PR to `main`. Two parallel jobs:
   - `lint` — `ruff check` + `ruff format --check`
   - `test` — `pytest --cov=rag --cov-fail-under=70` (coverage minimum 70 %, no live DB or API needed)
-- **`cd.yml`** — triggers via `workflow_run` on CI completion (only if CI succeeded) and on published releases. Builds and pushes to GitHub Container Registry (`ghcr.io/seydinabane/rag-fintech`). Uses `GITHUB_TOKEN` — no extra secrets required. Tags: `main`, `sha-<short>`, semver on releases.
+- **`cd.yml`** — triggers via `workflow_run` on CI completion (only if CI succeeded) and on published releases. Three sequential jobs:
+  1. `build-push` — builds Docker image, pushes to `ghcr.io/seydinabane/rag-fintech`. Uses `GITHUB_TOKEN`. Tags: `main`, `sha-<short>`, semver on releases.
+  2. `deploy` — pulls the image from GHCR and deploys to Fly.io via `flyctl deploy --image`. Requires `FLY_API_TOKEN` secret + `production` environment on GitHub.
 
-**Gate CD → CI** : the CD never runs if lint or tests fail — enforced via `workflow_run` + `conclusion == 'success'` condition.
+**Gate** : CD only runs if CI passes (`workflow_run` + `conclusion == 'success'`). Deploy only runs if build-push succeeds (`needs: [build-push]`).
 
-**Dependabot** (`.github/dependabot.yml`) scans `pip` + `github-actions` every Monday and opens PRs automatically.
+**Fly.io** (`fly.toml`) — region `cdg` (Paris), 512 MB RAM, health check on `/_stcore/health`, `release_command = "python scripts/init_db.py"` runs before each deploy to create tables and seed data idempotently.
 
-**PR template** (`.github/PULL_REQUEST_TEMPLATE.md`) pre-fills Description, Type de changement, and Test plan checklist on every new PR.
+**`scripts/init_db.py`** — connects via `DATABASE_URL` (Fly Postgres) or individual `DB_*` vars, creates tables if missing, seeds data only if `users` table is empty.
+
+**`rag/engine.py`** — accepts `DATABASE_URL` env var (Fly.io injects this when a Postgres cluster is attached) with fallback to individual `DB_*` vars. Handles `postgres://` → `postgresql://` scheme conversion automatically.
+
+**Dependabot** (`.github/dependabot.yml`) scans `pip` + `github-actions` every Monday.
+
+**PR template** (`.github/PULL_REQUEST_TEMPLATE.md`) pre-fills Description, Type de changement, and Test plan checklist.
 
 ## Notes
 

@@ -166,9 +166,11 @@ projet-rag-fintech/
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml             # Lint + tests + coverage (seuil 70 %)
-│   │   └── cd.yml             # Build & push image Docker (ghcr.io), gatée sur CI
+│   │   └── cd.yml             # Build Docker → push GHCR → deploy Fly.io
 │   ├── dependabot.yml         # Mises à jour automatiques des dépendances
 │   └── PULL_REQUEST_TEMPLATE.md  # Template PR
+├── scripts/
+│   └── init_db.py             # Init DB idempotent (release_command Fly.io)
 ├── rag/
 │   └── engine.py              # Moteur RAG — pipeline Text-to-SQL
 ├── dashboard/
@@ -184,6 +186,45 @@ projet-rag-fintech/
 ├── .env.example               # Modèle de variables d'environnement
 ├── pyproject.toml             # Dépendances du projet
 └── README.md
+```
+
+---
+
+## ☁️ Déploiement Fly.io
+
+### Prérequis
+- [flyctl](https://fly.io/docs/hands-on/install-flyctl/) installé
+- Compte Fly.io (`fly auth login`)
+- Secret `FLY_API_TOKEN` ajouté dans GitHub → Settings → Secrets → Actions
+- Environnement `production` créé dans GitHub → Settings → Environments
+
+### Première mise en production
+
+```bash
+# 1. Créer l'application
+fly apps create rag-fintech
+
+# 2. Créer et attacher une base PostgreSQL
+fly postgres create --name rag-fintech-db --region cdg
+fly postgres attach rag-fintech-db
+
+# 3. Définir les secrets applicatifs
+fly secrets set \
+  OPENROUTER_API_KEY=<ta_clé> \
+  OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# 4. Déployer (le schéma + données de test sont initialisés automatiquement)
+make fly-deploy
+```
+
+Le `release_command` dans `fly.toml` exécute `scripts/init_db.py` avant chaque déploiement — il crée les tables si elles n't existent pas et insère les données de test uniquement si la base est vide.
+
+### Commandes utiles
+
+```bash
+make fly-deploy   # déployer la dernière image main
+make fly-logs     # streamer les logs en temps réel
+make fly-ssh      # ouvrir un shell dans le conteneur
 ```
 
 ---

@@ -7,7 +7,11 @@ from sqlalchemy import create_engine, text
 
 load_dotenv()
 
-DB_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+_db_url = os.getenv("DATABASE_URL") or (
+    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+    f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+)
+DB_URL = _db_url.replace("postgres://", "postgresql://", 1)
 engine = create_engine(DB_URL)
 
 llm = ChatOpenAI(
