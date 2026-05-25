@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format check db-up db-down db-reset run docker-up docker-down
+.PHONY: install dev test coverage lint format check db-up db-down db-reset run docker-up docker-down
 
 install:
 	uv sync --all-groups
@@ -11,6 +11,10 @@ run:
 
 test:
 	uv run pytest -v
+
+coverage:
+	uv run pytest --cov=rag --cov-report=term-missing --cov-report=html --cov-fail-under=70
+	@echo "Rapport HTML disponible dans htmlcov/index.html"
 
 lint:
 	uv run ruff check .
