@@ -1,43 +1,68 @@
 # CLAUDE.md
 
-Ce fichier fournit des instructions à Claude Code (claude.ai/code) pour travailler dans ce dépôt.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commandes
+## Commands
 
 ```bash
-# Lancer l'application
-uv run streamlit run dashboard/app.py --server.port 8502
-# Ouvrir http://localhost:8502
+# Install dependencies + pre-commit hooks
+make install           # uv sync --all-groups && pre-commit install
 
-# Installer les dépendances
-uv sync
+# Run the app (local dev — requires postgres-fintech container on port 5433)
+make run               # uv run streamlit run dashboard/app.py --server.port 8502
+# Open http://localhost:8502
 
+# Run tests (no DB or API connection needed — all external deps are mocked at import time)
+make test              # uv run pytest -v
+uv run pytest tests/test_engine.py -v   # single file
+
+# Lint + format
+make lint              # ruff check
+make format            # ruff format
+make check             # lint + test (mirrors CI)
+
+# Database (Docker)
+make db-up             # start postgres container only
+make db-down           # stop it
+make db-reset          # destroy volume and reseed from init.sql
+
+# Full stack
+make docker-up         # docker compose up --build -d
+make docker-down       # docker compose down
+
+# Run only the engine directly (executes two example queries against live DB)
+uv run python rag/engine.py
 ```
-
-PostgreSQL tourne sur le port 5433 (non standard). Nécessite Docker avec le conteneur `postgres-fintech` en cours d'exécution.
 
 ## Architecture
 
-Pipeline LLM en 3 étapes orchestré par LangChain :
+Text-to-SQL RAG pipeline — no vector store, no embeddings. LangChain orchestrates two sequential LLM calls via OpenRouter, both using `anthropic/claude-haiku-4-5`.
 
 ```
-Question utilisateur → Claude Haiku (génération SQL) → Exécution PostgreSQL → Claude Haiku (réponse en français) → Interface Streamlit
+User question
+  → generer_sql()   — LLM call 1: question + SCHEMA prompt → raw SQL string
+  → executer_sql()  — SQLAlchemy executes SQL against PostgreSQL, returns list[dict]
+  → formuler_reponse() — LLM call 2: question + SQL + results → French natural-language answer
+  → repondre()      — wraps the above, catches all exceptions, returns {reponse, sql, resultats, erreur}
 ```
 
-**Fichiers clés :**
-- `rag/engine.py` — Moteur RAG principal. `repondre(question)` est le point d'entrée qui enchaîne `generer_sql()` → `executer_sql()` → `formuler_reponse()`. Tous les appels LLM utilisent Claude Haiku via OpenRouter.
-- `dashboard/app.py` — Interface chat Streamlit. Gère l'état de session pour l'historique des messages, affiche le SQL généré et les données brutes dans des sections dépliables.
+**Key files:**
+- `rag/engine.py` — entire RAG logic. The `SCHEMA` constant is the only DB context the LLM sees; keep it in sync with `init.sql` if the schema changes.
+- `dashboard/app.py` — Streamlit chat UI. Session state holds the full message history including raw SQL and result dicts for each assistant turn (rendered in collapsible expanders).
+- `init.sql` — schema DDL + seed data. Auto-executed by Docker on first container start.
 
-## Schéma de la base de données (PostgreSQL, db : fintech)
+## Database
 
+PostgreSQL (db: `fintech`). When running locally, the container maps port `5433:5432` — use `DB_PORT=5433` in `.env`. Inside Docker Compose, the app connects to the `postgres` service on the default port 5432 (`DB_HOST: postgres`, `DB_PORT: 5432` are injected by `docker-compose.yml`, overriding `.env`).
+
+Tables and key constraints:
 - `users` — id, nom, email, pays, telephone, created_at
-- `comptes` — id, user_id, numero, type_compte, solde, created_at
-- `transactions` — id, compte_id, type_tx, montant, pays_origine, pays_destination, heure, est_fraude, score_fraude, created_at
-- `alertes_fraude` — id, transaction_id, niveau, rapport_llm, created_at
+- `comptes` — id, user_id → users.id, numero, type_compte (`courant`/`epargne`/`mobile`), solde, created_at
+- `transactions` — id, compte_id → comptes.id, type_tx (`transfert`/`paiement`/`retrait`/`depot`), montant, pays_origine, pays_destination, heure (0–23), est_fraude (0/1), score_fraude (0–1), created_at
+- `alertes_fraude` — id, transaction_id → transactions.id, niveau (`faible`/`moyen`/`eleve`), rapport_llm, created_at
 
-## Variables d'environnement
+## Environment variables (`.env`)
 
-Requises dans `.env` :
 ```
 OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
@@ -48,8 +73,20 @@ DB_USER=
 DB_PASSWORD=
 ```
 
+## CI/CD (GitHub Actions)
+
+Two workflows in `.github/workflows/`:
+
+- **`ci.yml`** — triggers on every push and PR to `main`. Two parallel jobs:
+  - `lint` — `ruff check` + `ruff format --check`
+  - `test` — `pytest` (no live DB or API needed, all mocked at import time)
+- **`cd.yml`** — triggers on push to `main` and on published releases. Builds the Docker image and pushes to GitHub Container Registry (`ghcr.io/seydinabane/rag-fintech`). Uses `GITHUB_TOKEN` (no extra secrets required). Tags: `main`, `sha-<short>`, semver on releases.
+
+The CD job runs independently of CI — if you want to gate it on CI passing, add `needs: [lint, test]` after extracting CI jobs to a reusable workflow.
+
 ## Notes
 
-- Toutes les réponses LLM sont en français — les prompts dans `rag/engine.py` sont rédigés en français.
-- `chromadb` est listé comme dépendance mais n'est utilisé dans aucun fichier source.
-- Le fichier `.env` doit être ajouté au `.gitignore` pour éviter de committer des secrets.
+- All LLM prompts and responses are in French.
+- `chromadb` appears in some references but is **not used** — there is no vector retrieval step.
+- Tests mock both `sqlalchemy.create_engine` and `langchain_openai.ChatOpenAI` at import time (before `rag.engine` loads) so no live connections are needed to run the test suite.
+- The SQL generation prompt enforces `LIMIT 20` and `ROUND(...::numeric, 0)` for amounts — preserve these rules when editing `generer_sql()`.
