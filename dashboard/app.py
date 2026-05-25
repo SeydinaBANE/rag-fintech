@@ -1,5 +1,6 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from rag.engine import repondre
 
 
@@ -11,11 +12,8 @@ def _afficher_sql_resultats(sql, resultats):
         with st.expander("Voir les données brutes"):
             st.dataframe(pd.DataFrame(resultats))
 
-st.set_page_config(
-    page_title="Assistant IA Fintech",
-    page_icon="🤖",
-    layout="wide"
-)
+
+st.set_page_config(page_title="Assistant IA Fintech", page_icon="🤖", layout="wide")
 
 st.title("🤖 Assistant IA Fintech")
 st.caption("Posez vos questions en langage naturel sur vos données financières")
@@ -47,10 +45,12 @@ st.sidebar.markdown("- Streamlit")
 # ── HISTORIQUE ──
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": "Bonjour ! Je suis votre assistant IA fintech. Posez-moi n'importe quelle question sur vos données de transactions. Par exemple : *'Combien de fraudes ce mois-ci ?'* ou *'Quel client est le plus actif ?'*"
-    })
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": "Bonjour ! Je suis votre assistant IA fintech. Posez-moi n'importe quelle question sur vos données de transactions. Par exemple : *'Combien de fraudes ce mois-ci ?'* ou *'Quel client est le plus actif ?'*",
+        }
+    )
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -76,9 +76,11 @@ if question:
         st.markdown(result["reponse"])
         _afficher_sql_resultats(result["sql"], result["resultats"])
 
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": result["reponse"],
-        "sql": result["sql"],
-        "resultats": result["resultats"]
-    })
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": result["reponse"],
+            "sql": result["sql"],
+            "resultats": result["resultats"],
+        }
+    )
