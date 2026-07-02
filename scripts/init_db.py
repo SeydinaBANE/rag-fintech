@@ -8,6 +8,7 @@ seeds data only when empty, applies any pending Alembic migrations
 provisions the app_readonly role.
 """
 
+import logging
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -18,7 +19,11 @@ from alembic.config import Config
 from dotenv import load_dotenv
 from psycopg2 import sql
 
+from rag.logging_config import configure_logging
+
 load_dotenv()
+configure_logging()
+logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INIT_SQL_PATH = REPO_ROOT / "init.sql"
@@ -60,7 +65,7 @@ for stmt in sql_script.split(";"):
 
 alembic_cfg = Config(str(REPO_ROOT / "alembic.ini"))
 command.upgrade(alembic_cfg, "head")
-print("Alembic migrations applied (head).")
+logger.info("Alembic migrations applied (head).")
 
 readonly_password = os.getenv("READONLY_DB_PASSWORD")
 if readonly_password:
@@ -80,11 +85,11 @@ if readonly_password:
     cur.execute("GRANT USAGE ON SCHEMA public TO app_readonly")
     cur.execute("GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_readonly")
     cur.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO app_readonly")
-    print("Role app_readonly ensured (read-only, GRANT SELECT on public schema).")
+    logger.info("Role app_readonly ensured (read-only, GRANT SELECT on public schema).")
 else:
-    print("READONLY_DB_PASSWORD not set — skipping app_readonly role provisioning.")
+    logger.warning("READONLY_DB_PASSWORD not set — skipping app_readonly role provisioning.")
 
 conn.commit()
 cur.close()
 conn.close()
-print("Database initialized successfully.")
+logger.info("Database initialized successfully.")

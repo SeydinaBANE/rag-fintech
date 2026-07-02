@@ -1,5 +1,7 @@
+import logging
 import os
 import re
+import time
 
 import sqlparse
 from dotenv import load_dotenv
@@ -7,7 +9,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from sqlalchemy import create_engine, text
 
+from rag.logging_config import configure_logging
+
 load_dotenv()
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 
 class SQLValidationError(Exception):
@@ -61,7 +68,12 @@ Valeurs importantes :
 """
 
 
+def _apercu(texte: str, longueur: int = 80) -> str:
+    return texte[:longueur] + ("…" if len(texte) > longueur else "")
+
+
 def generer_sql(question: str) -> str:
+    debut = time.monotonic()
     messages = [
         SystemMessage(
             content=f"""Tu es un expert SQL PostgreSQL.
@@ -80,28 +92,41 @@ Règles :
         HumanMessage(content=question),
     ]
     response = llm.invoke(messages)
-    return response.content.strip()
+    sql = response.content.strip()
+    logger.info(
+        "generer_sql question_len=%d question_apercu=%r duree_ms=%d sql=%r",
+        len(question),
+        _apercu(question),
+        int((time.monotonic() - debut) * 1000),
+        sql,
+    )
+    return sql
 
 
 def valider_sql(sql: str) -> str:
     statements = [s for s in sqlparse.parse(sql) if str(s).strip()]
     if len(statements) != 1:
+        logger.warning("valider_sql rejet raison=instructions_multiples sql=%r", sql)
         raise SQLValidationError("La requête doit contenir une seule instruction SQL.")
 
     statement = statements[0]
     if statement.get_type() != "SELECT":
+        logger.warning("valider_sql rejet raison=non_select sql=%r", sql)
         raise SQLValidationError("Seules les requêtes SELECT sont autorisées.")
 
     corps = str(statement).strip().rstrip(";")
     if ";" in corps:
+        logger.warning("valider_sql rejet raison=point_virgule_interne sql=%r", sql)
         raise SQLValidationError("Les requêtes multiples ne sont pas autorisées.")
     if _MOTS_CLES_INTERDITS.search(corps):
+        logger.warning("valider_sql rejet raison=mot_cle_interdit sql=%r", sql)
         raise SQLValidationError("La requête contient une opération non autorisée.")
 
     return corps
 
 
 def executer_sql(sql: str) -> list:
+    debut = time.monotonic()
     sql_valide = valider_sql(sql)
     requete_plafonnee = text(f"SELECT * FROM ({sql_valide}) AS _capped LIMIT :max_rows")
 
@@ -110,10 +135,17 @@ def executer_sql(sql: str) -> list:
         result = conn.execute(requete_plafonnee, {"max_rows": MAX_SQL_ROWS})
         columns = list(result.keys())
         rows = [dict(zip(columns, row)) for row in result.fetchmany(MAX_SQL_ROWS)]
+
+    logger.info(
+        "executer_sql duree_ms=%d lignes=%d",
+        int((time.monotonic() - debut) * 1000),
+        len(rows),
+    )
     return rows
 
 
 def formuler_reponse(question: str, sql: str, resultats: list) -> str:
+    debut = time.monotonic()
     messages = [
         SystemMessage(
             content="""Tu es un assistant analyste financier pour une fintech africaine.
@@ -132,16 +164,24 @@ Formule une réponse naturelle et professionnelle."""
         ),
     ]
     response = llm.invoke(messages)
-    return response.content.strip()
+    reponse = response.content.strip()
+    logger.info("formuler_reponse duree_ms=%d", int((time.monotonic() - debut) * 1000))
+    return reponse
 
 
 def repondre(question: str) -> dict:
+    debut = time.monotonic()
     try:
         sql = generer_sql(question)
         resultats = executer_sql(sql)
         reponse = formuler_reponse(question, sql, resultats)
+        logger.info("repondre succes=true duree_ms=%d", int((time.monotonic() - debut) * 1000))
         return {"reponse": reponse, "sql": sql, "resultats": resultats, "erreur": None}
     except SQLValidationError:
+        logger.info(
+            "repondre succes=false erreur=sql_validation_error duree_ms=%d",
+            int((time.monotonic() - debut) * 1000),
+        )
         return {
             "reponse": "Cette question nécessite une opération non autorisée.",
             "sql": None,
@@ -149,6 +189,10 @@ def repondre(question: str) -> dict:
             "erreur": "sql_validation_error",
         }
     except Exception:
+        logger.exception(
+            "repondre succes=false erreur=internal_error duree_ms=%d",
+            int((time.monotonic() - debut) * 1000),
+        )
         return {
             "reponse": (
                 "Une erreur est survenue lors du traitement de votre question. "

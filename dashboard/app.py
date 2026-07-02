@@ -1,10 +1,16 @@
+import logging
 import os
 import time
+import uuid
 
 import pandas as pd
 import streamlit as st
 
 from rag.engine import repondre
+from rag.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 MAX_TENTATIVES_CONNEXION = 5
 DUREE_BLOCAGE_S = 60
@@ -43,12 +49,16 @@ def _authentifie() -> bool:
         if mot_de_passe == mot_de_passe_attendu:
             st.session_state["authenticated"] = True
             st.session_state["tentatives_connexion"] = 0
+            logger.info("authentification succes=true")
             st.rerun()
         else:
             st.session_state["tentatives_connexion"] += 1
             if st.session_state["tentatives_connexion"] >= MAX_TENTATIVES_CONNEXION:
                 st.session_state["blocage_jusqu_a"] = time.time() + DUREE_BLOCAGE_S
                 st.session_state["tentatives_connexion"] = 0
+                logger.warning("authentification blocage_temporaire duree_s=%d", DUREE_BLOCAGE_S)
+            else:
+                logger.warning("authentification succes=false")
             st.error("Mot de passe incorrect.")
     return False
 
@@ -92,6 +102,9 @@ st.sidebar.divider()
 st.sidebar.caption("🤖 Propulsé par IA")
 
 # ── HISTORIQUE ──
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.messages.append(
@@ -118,6 +131,9 @@ if question and _debit_depasse():
         f"Trop de questions envoyées (max {MAX_QUESTIONS_PAR_MINUTE}/minute). Patientez un peu."
     )
 elif question:
+    logger.info(
+        "question_soumise session_id=%s longueur=%d", st.session_state.session_id, len(question)
+    )
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
