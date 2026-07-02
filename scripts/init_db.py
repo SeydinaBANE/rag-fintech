@@ -58,16 +58,24 @@ if table_exists:
     already_seeded = cur.fetchone()[0] > 0
 
 with open(INIT_SQL_PATH) as f:
-    sql_script = f.read()
+    lignes_sans_commentaires = [
+        ligne for ligne in f.read().splitlines() if not ligne.strip().startswith("--")
+    ]
+    sql_script = "\n".join(lignes_sans_commentaires)
 
 for stmt in sql_script.split(";"):
     stmt = stmt.strip()
-    if not stmt or stmt.startswith("--"):
+    if not stmt:
         continue
     is_insert = stmt.lstrip("\n").upper().startswith("INSERT")
     if is_insert and already_seeded:
         continue
     cur.execute(stmt)
+
+# Doit être committé avant d'invoquer Alembic : il ouvre sa propre connexion
+# SQLAlchemy (migrations/env.py) et ses CREATE TABLE IF NOT EXISTS resteraient
+# bloqués en attente du verrou tant que cette transaction reste ouverte.
+conn.commit()
 
 alembic_cfg = Config(str(REPO_ROOT / "alembic.ini"))
 command.upgrade(alembic_cfg, "head")
