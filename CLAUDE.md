@@ -115,6 +115,10 @@ Two workflows in `.github/workflows/`:
 
 Fly Postgres takes automated daily snapshots with Fly-managed retention. List/restore with `flyctl postgres backup list -a <postgres-app>` / `flyctl postgres backup restore <backup-id>`. There is no supplementary off-Fly backup configured — an untested backup isn't a backup, so verify a restore at least once before relying on this in an incident.
 
+### Redundancy
+
+`fly.toml`'s `[http_service]` runs `min_machines_running = 1` (Tier 1: always-on) instead of scale-to-zero, to eliminate the cold-start penalty on every first request after idle. This is still a single machine — Fly restarts it automatically on crash but there is a gap, not instant failover. Roughly doubles Fly compute cost vs. `min_machines_running = 0`. Real multi-machine + HA Postgres redundancy (Tier 2) would need `fly scale count 2` plus an HA Postgres cluster and isn't configured — evaluate if/when uptime requirements justify the added cost.
+
 **`rag/engine.py`** — accepts `DATABASE_URL` env var (Fly.io injects this when a Postgres cluster is attached) with fallback to individual `DB_*` vars. Handles `postgres://` → `postgresql://` scheme conversion automatically.
 
 **Dependabot** (`.github/dependabot.yml`) scans `pip` + `github-actions` every Monday.
