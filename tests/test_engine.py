@@ -37,6 +37,12 @@ class TestGenererSQL(unittest.TestCase):
         engine_module.generer_sql("Ma question")
         self.mock_llm.invoke.assert_called_once()
 
+    def test_rejette_une_question_trop_longue_sans_appeler_le_llm(self):
+        question_longue = "a" * (engine_module.MAX_QUESTION_LENGTH + 1)
+        with self.assertRaises(engine_module.QuestionTropLongueError):
+            engine_module.generer_sql(question_longue)
+        self.mock_llm.invoke.assert_not_called()
+
 
 class TestValiderSQL(unittest.TestCase):
     def test_accepte_un_select_simple(self):
@@ -142,6 +148,13 @@ class TestRepondre(unittest.TestCase):
         result = engine_module.repondre("Question malveillante")
         self.assertEqual(result["erreur"], "sql_validation_error")
         self.assertNotIn("DROP TABLE", result["reponse"])
+        self.assertEqual(result["resultats"], [])
+        self.assertIsNone(result["sql"])
+
+    def test_gere_une_question_trop_longue(self):
+        question_longue = "a" * (engine_module.MAX_QUESTION_LENGTH + 1)
+        result = engine_module.repondre(question_longue)
+        self.assertEqual(result["erreur"], "question_trop_longue")
         self.assertEqual(result["resultats"], [])
         self.assertIsNone(result["sql"])
 

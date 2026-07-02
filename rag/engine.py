@@ -23,6 +23,13 @@ class SQLValidationError(Exception):
     pass
 
 
+class QuestionTropLongueError(Exception):
+    pass
+
+
+MAX_QUESTION_LENGTH = int(os.getenv("MAX_QUESTION_LENGTH", "1000"))
+
+
 # L'app se connecte avec le rôle app_readonly (SELECT uniquement, créé par
 # scripts/init_db.py) — les identifiants admin DATABASE_URL/DB_* ne sont
 # utilisés que par scripts/init_db.py, jamais par l'app en exécution.
@@ -75,6 +82,12 @@ def _apercu(texte: str, longueur: int = 80) -> str:
 
 
 def generer_sql(question: str) -> str:
+    if len(question) > MAX_QUESTION_LENGTH:
+        logger.warning("generer_sql rejet raison=question_trop_longue longueur=%d", len(question))
+        raise QuestionTropLongueError(
+            f"La question dépasse la longueur maximale autorisée ({MAX_QUESTION_LENGTH} caractères)."
+        )
+
     debut = time.monotonic()
     messages = [
         SystemMessage(
@@ -189,6 +202,17 @@ def repondre(question: str) -> dict:
             "sql": None,
             "resultats": [],
             "erreur": "sql_validation_error",
+        }
+    except QuestionTropLongueError:
+        logger.info(
+            "repondre succes=false erreur=question_trop_longue duree_ms=%d",
+            int((time.monotonic() - debut) * 1000),
+        )
+        return {
+            "reponse": f"Votre question dépasse {MAX_QUESTION_LENGTH} caractères. Reformulez-la plus brièvement.",
+            "sql": None,
+            "resultats": [],
+            "erreur": "question_trop_longue",
         }
     except Exception as e:
         logger.exception(

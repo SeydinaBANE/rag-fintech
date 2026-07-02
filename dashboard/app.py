@@ -121,7 +121,7 @@ for msg in st.session_state.messages:
         _afficher_sql_resultats(msg.get("sql"), msg.get("resultats"))
 
 # ── INPUT ──
-question = st.chat_input("Posez votre question...")
+question = st.chat_input("Posez votre question...", max_chars=500)
 
 if "question_auto" in st.session_state:
     question = st.session_state.question_auto
