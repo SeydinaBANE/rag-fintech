@@ -96,9 +96,11 @@ Two workflows in `.github/workflows/`:
   - `test` — `pytest --cov=rag --cov-fail-under=70` (coverage minimum 70 %, no live DB or API needed)
 - **`cd.yml`** — triggers via `workflow_run` on CI completion (only if CI succeeded) and on published releases. Three sequential jobs:
   1. `build-push` — builds Docker image, pushes to `ghcr.io/seydinabane/rag-fintech`. Uses `GITHUB_TOKEN`. Tags: `main`, `sha-<short>`, semver on releases.
-  2. `deploy` — pulls the image from GHCR and deploys to Fly.io via `flyctl deploy --image`. Requires `FLY_API_TOKEN` secret + `production` environment on GitHub.
+  2. `deploy` — pulls the image from GHCR, deploys to Fly.io via `flyctl deploy --image`, then smoke-tests `https://rag-fintech.fly.dev/_stcore/health` (up to 10 retries, 10s apart) — fails the workflow run if the deploy doesn't come up healthy. Requires `FLY_API_TOKEN` secret + `production` environment on GitHub.
 
 **Gate** : CD only runs if CI passes (`workflow_run` + `conclusion == 'success'`). Deploy only runs if build-push succeeds (`needs: [build-push]`).
+
+**Rollback**: images are tagged both `main` and `sha-<short>` (see `build-push`'s `docker/metadata-action` config), so rolling back to a known-good build is `make fly-rollback SHA=<short-sha>` (wraps `flyctl deploy --image ghcr.io/seydinabane/rag-fintech:sha-<short-sha>`). Find the short SHA from a previous commit or from `ghcr.io/seydinabane/rag-fintech` package tags.
 
 **Fly.io** (`fly.toml`) — region `cdg` (Paris), 512 MB RAM, health check on `/_stcore/health`, `release_command = "python scripts/init_db.py"` runs before each deploy to create tables and seed data idempotently.
 

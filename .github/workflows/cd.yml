@@ -81,3 +81,17 @@ jobs:
           flyctl deploy --image "ghcr.io/$REPO:$TAG"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 10); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" https://rag-fintech.fly.dev/_stcore/health)
+            if [ "$status" = "200" ]; then
+              echo "Health check OK (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: status $status, retrying in 10s..."
+            sleep 10
+          done
+          echo "Health check failed after deploy — rollback with: make fly-rollback SHA=<sha-court>"
+          exit 1

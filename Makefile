@@ -1,4 +1,4 @@
-.PHONY: install dev test coverage lint format check db-up db-down db-reset db-init run docker-up docker-down fly-deploy fly-logs fly-ssh
+.PHONY: install dev test coverage lint format check db-up db-down db-reset db-init run docker-up docker-down fly-deploy fly-logs fly-ssh fly-rollback
 
 install:
 	uv sync --all-groups
@@ -45,6 +45,10 @@ docker-down:
 
 fly-deploy:
 	flyctl deploy --image ghcr.io/seydinabane/rag-fintech:main
+
+fly-rollback:
+	@if [ -z "$(SHA)" ]; then echo "Usage: make fly-rollback SHA=<sha-court>"; exit 1; fi
+	flyctl deploy --image ghcr.io/seydinabane/rag-fintech:sha-$(SHA)
 
 fly-logs:
 	flyctl logs
