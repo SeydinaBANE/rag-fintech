@@ -5,6 +5,7 @@ description = "Assistant IA RAG Text-to-SQL pour l'analyse de fraude fintech en 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic>=1.18.5",
     "langchain>=1.2.17",
     "langchain-openai>=1.2.1",
     "pandas>=3.0.2",

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Initialize database schema and seed data (idempotent).
 
-Used as Fly.io release_command on every deploy.
-Creates tables if they don't exist; seeds data only when tables are empty.
+Used as Fly.io release_command on every deploy, and by `make dev`/
+docker-compose locally. Creates tables from init.sql if they don't exist,
+seeds data only when empty, applies any pending Alembic migrations
+(schema changes beyond the baseline captured in init.sql), then
+provisions the app_readonly role.
 """
 
 import os
@@ -10,12 +13,15 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import psycopg2
+from alembic import command
+from alembic.config import Config
 from dotenv import load_dotenv
 from psycopg2 import sql
 
 load_dotenv()
 
-INIT_SQL_PATH = Path(__file__).resolve().parent.parent / "init.sql"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+INIT_SQL_PATH = REPO_ROOT / "init.sql"
 
 db_url = os.getenv("DATABASE_URL") or (
     f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
@@ -51,6 +57,10 @@ for stmt in sql_script.split(";"):
     if is_insert and already_seeded:
         continue
     cur.execute(stmt)
+
+alembic_cfg = Config(str(REPO_ROOT / "alembic.ini"))
+command.upgrade(alembic_cfg, "head")
+print("Alembic migrations applied (head).")
 
 readonly_password = os.getenv("READONLY_DB_PASSWORD")
 if readonly_password:

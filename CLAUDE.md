@@ -102,7 +102,18 @@ Two workflows in `.github/workflows/`:
 
 **Fly.io** (`fly.toml`) — region `cdg` (Paris), 512 MB RAM, health check on `/_stcore/health`, `release_command = "python scripts/init_db.py"` runs before each deploy to create tables and seed data idempotently.
 
-**`scripts/init_db.py`** — connects via `DATABASE_URL` (Fly Postgres) or individual `DB_*` vars, creates tables if missing, seeds data only if `users` table is empty.
+**`scripts/init_db.py`** — connects via `DATABASE_URL` (Fly Postgres) or individual `DB_*` vars, creates tables if missing, seeds data only if `users` table is empty, then runs `alembic upgrade head` and provisions the `app_readonly` role (see below). Also invoked locally by `make dev`/`make db-init` and by `docker-compose.yml`'s `app` service command — it is not Fly-only.
+
+### Schema migrations (Alembic)
+
+`init.sql` still bootstraps a brand-new local Postgres container via `docker-entrypoint-initdb.d` (fast, zero Python dependency) and is read by `scripts/init_db.py` for the CREATE TABLE + seed pass. `migrations/versions/afcc172a6e71_baseline_schema.py` captures that same schema as an Alembic baseline (idempotent `CREATE TABLE IF NOT EXISTS`, safe to run whether or not `init.sql` already created the tables). `scripts/init_db.py` calls `alembic upgrade head` after the `init.sql` pass on every run (Fly release, `make dev`, docker-compose), so:
+- **New schema changes** (e.g. adding a column to an existing prod table) must be new Alembic revisions (`uv run alembic revision -m "..."`, hand-written `op.execute`/`op.add_column` — not autogenerate, since `target_metadata` isn't wired to ORM models), not edits to the baseline or to `init.sql`. `init.sql` only needs updating too if the change should also apply to a from-scratch `docker-entrypoint-initdb.d` bootstrap.
+- Migrations connect with the **admin** credentials (`DATABASE_URL`/`DB_*`, resolved in `migrations/env.py` the same way as `scripts/init_db.py`), never `app_readonly`.
+- Run migrations manually with `uv run alembic upgrade head` (needs `.env` with admin DB credentials) or `uv run alembic revision -m "..."` to create a new one.
+
+### Backups
+
+Fly Postgres takes automated daily snapshots with Fly-managed retention. List/restore with `flyctl postgres backup list -a <postgres-app>` / `flyctl postgres backup restore <backup-id>`. There is no supplementary off-Fly backup configured — an untested backup isn't a backup, so verify a restore at least once before relying on this in an incident.
 
 **`rag/engine.py`** — accepts `DATABASE_URL` env var (Fly.io injects this when a Postgres cluster is attached) with fallback to individual `DB_*` vars. Handles `postgres://` → `postgresql://` scheme conversion automatically.
 

@@ -11,7 +11,8 @@ RUN uv sync --no-dev --frozen
 COPY rag/ ./rag/
 COPY dashboard/ ./dashboard/
 COPY scripts/ ./scripts/
-COPY init.sql ./
+COPY migrations/ ./migrations/
+COPY init.sql alembic.ini ./
 
 ENV PATH="/app/.venv/bin:$PATH"
 
