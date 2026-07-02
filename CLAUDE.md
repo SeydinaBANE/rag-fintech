@@ -67,6 +67,10 @@ Tables and key constraints:
 - `transactions` — id, compte_id → comptes.id, type_tx (`transfert`/`paiement`/`retrait`/`depot`), montant, pays_origine, pays_destination, heure (0–23), est_fraude (0/1), score_fraude (0–1), created_at
 - `alertes_fraude` — id, transaction_id → transactions.id, niveau (`faible`/`moyen`/`eleve`), rapport_llm, created_at
 
+### Privilege separation (read-only role)
+
+`rag/engine.py` connects to Postgres with the `app_readonly` role (`READONLY_DATABASE_URL` or `READONLY_DB_USER`/`READONLY_DB_PASSWORD`), **not** the admin credentials (`DATABASE_URL`/`DB_USER`/`DB_PASSWORD`). The admin credentials are used only by `scripts/init_db.py` to create tables/seed data and to idempotently provision `app_readonly` (`GRANT SELECT` on `public` schema, `default_transaction_read_only = on`, role-level `statement_timeout`). Set `READONLY_DB_PASSWORD` in `.env`/`docker-compose.yml`/Fly secrets or role provisioning is skipped with a warning. `rag/engine.py`'s `valider_sql()` also enforces SELECT-only, single-statement SQL in code (not just via the LLM prompt) before `executer_sql()` runs it, wraps every query in a `LIMIT :max_rows` subquery, and sets a per-connection `statement_timeout` — defense in depth alongside the DB-level role restrictions.
+
 ## Environment variables (`.env`)
 
 ```

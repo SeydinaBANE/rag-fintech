@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import psycopg2
 from dotenv import load_dotenv
+from psycopg2 import sql
 
 load_dotenv()
 
@@ -47,6 +48,28 @@ for stmt in sql.split(";"):
     if is_insert and already_seeded:
         continue
     cur.execute(stmt)
+
+readonly_password = os.getenv("READONLY_DB_PASSWORD")
+if readonly_password:
+    cur.execute("SELECT 1 FROM pg_roles WHERE rolname = 'app_readonly'")
+    role_exists = cur.fetchone() is not None
+    if role_exists:
+        cur.execute("ALTER ROLE app_readonly WITH LOGIN PASSWORD %s", (readonly_password,))
+    else:
+        cur.execute("CREATE ROLE app_readonly WITH LOGIN PASSWORD %s", (readonly_password,))
+    cur.execute("ALTER ROLE app_readonly SET default_transaction_read_only = on")
+    cur.execute("ALTER ROLE app_readonly SET statement_timeout = '5000'")
+    cur.execute(
+        sql.SQL("GRANT CONNECT ON DATABASE {} TO app_readonly").format(
+            sql.Identifier(parsed.path.lstrip("/"))
+        )
+    )
+    cur.execute("GRANT USAGE ON SCHEMA public TO app_readonly")
+    cur.execute("GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_readonly")
+    cur.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO app_readonly")
+    print("Role app_readonly ensured (read-only, GRANT SELECT on public schema).")
+else:
+    print("READONLY_DB_PASSWORD not set — skipping app_readonly role provisioning.")
 
 conn.commit()
 cur.close()

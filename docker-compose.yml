@@ -9,6 +9,7 @@ services:
       # Overrides .env pour pointer vers le service postgres interne
       DB_HOST: postgres
       DB_PORT: "5432"
+      READONLY_DB_PASSWORD: ${READONLY_DB_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy

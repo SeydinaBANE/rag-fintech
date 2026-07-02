@@ -1,5 +1,7 @@
 import os
+import re
 
+import sqlparse
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -7,12 +9,28 @@ from sqlalchemy import create_engine, text
 
 load_dotenv()
 
-_db_url = os.getenv("DATABASE_URL") or (
-    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+
+class SQLValidationError(Exception):
+    pass
+
+
+# L'app se connecte avec le rôle app_readonly (SELECT uniquement, créé par
+# scripts/init_db.py) — les identifiants admin DATABASE_URL/DB_* ne sont
+# utilisés que par scripts/init_db.py, jamais par l'app en exécution.
+_db_url = os.getenv("READONLY_DATABASE_URL") or (
+    f"postgresql://{os.getenv('READONLY_DB_USER', 'app_readonly')}:{os.getenv('READONLY_DB_PASSWORD')}"
     f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 )
 DB_URL = _db_url.replace("postgres://", "postgresql://", 1)
 engine = create_engine(DB_URL)
+
+MAX_SQL_ROWS = int(os.getenv("MAX_SQL_ROWS", "20"))
+SQL_STATEMENT_TIMEOUT_MS = int(os.getenv("SQL_STATEMENT_TIMEOUT_MS", "5000"))
+
+_MOTS_CLES_INTERDITS = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|CALL|EXECUTE)\b",
+    re.IGNORECASE,
+)
 
 llm = ChatOpenAI(
     model="anthropic/claude-haiku-4-5",
@@ -63,11 +81,33 @@ Règles :
     return response.content.strip()
 
 
+def valider_sql(sql: str) -> str:
+    statements = [s for s in sqlparse.parse(sql) if str(s).strip()]
+    if len(statements) != 1:
+        raise SQLValidationError("La requête doit contenir une seule instruction SQL.")
+
+    statement = statements[0]
+    if statement.get_type() != "SELECT":
+        raise SQLValidationError("Seules les requêtes SELECT sont autorisées.")
+
+    corps = str(statement).strip().rstrip(";")
+    if ";" in corps:
+        raise SQLValidationError("Les requêtes multiples ne sont pas autorisées.")
+    if _MOTS_CLES_INTERDITS.search(corps):
+        raise SQLValidationError("La requête contient une opération non autorisée.")
+
+    return corps
+
+
 def executer_sql(sql: str) -> list:
+    sql_valide = valider_sql(sql)
+    requete_plafonnee = text(f"SELECT * FROM ({sql_valide}) AS _capped LIMIT :max_rows")
+
     with engine.connect() as conn:
-        result = conn.execute(text(sql))
+        conn.execute(text(f"SET statement_timeout = {SQL_STATEMENT_TIMEOUT_MS}"))
+        result = conn.execute(requete_plafonnee, {"max_rows": MAX_SQL_ROWS})
         columns = list(result.keys())
-        rows = [dict(zip(columns, row)) for row in result.fetchall()]
+        rows = [dict(zip(columns, row)) for row in result.fetchmany(MAX_SQL_ROWS)]
     return rows
 
 

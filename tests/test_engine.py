@@ -30,11 +30,29 @@ class TestGenererSQL(unittest.TestCase):
         self.mock_llm.invoke.assert_called_once()
 
 
+class TestValiderSQL(unittest.TestCase):
+    def test_accepte_un_select_simple(self):
+        result = engine_module.valider_sql("SELECT id FROM users")
+        self.assertEqual(result, "SELECT id FROM users")
+
+    def test_rejette_drop_table(self):
+        with self.assertRaises(engine_module.SQLValidationError):
+            engine_module.valider_sql("DROP TABLE users")
+
+    def test_rejette_requetes_multiples(self):
+        with self.assertRaises(engine_module.SQLValidationError):
+            engine_module.valider_sql("SELECT 1; DELETE FROM users")
+
+    def test_rejette_insert_deguise_en_select(self):
+        with self.assertRaises(engine_module.SQLValidationError):
+            engine_module.valider_sql("SELECT * FROM users; INSERT INTO users VALUES (1)")
+
+
 class TestExecuterSQL(unittest.TestCase):
     def _mock_engine(self, colonnes, lignes):
         mock_result = MagicMock()
         mock_result.keys.return_value = colonnes
-        mock_result.fetchall.return_value = lignes
+        mock_result.fetchmany.return_value = lignes
 
         mock_conn = MagicMock()
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
@@ -56,6 +74,17 @@ class TestExecuterSQL(unittest.TestCase):
         result = engine_module.executer_sql("SELECT id FROM users WHERE 1=0")
         self.assertEqual(result, [])
 
+    def test_definit_le_timeout_avant_la_requete(self):
+        mock_conn = self._mock_engine(["id"], [(1,)])
+        engine_module.executer_sql("SELECT id FROM users")
+        self.assertEqual(mock_conn.execute.call_count, 2)
+
+    def test_rejette_le_sql_non_select_avant_execution(self):
+        mock_conn = self._mock_engine(["id"], [(1,)])
+        with self.assertRaises(engine_module.SQLValidationError):
+            engine_module.executer_sql("DROP TABLE users")
+        mock_conn.execute.assert_not_called()
+
 
 class TestRepondre(unittest.TestCase):
     def _setup_mocks(self, sql_content="SELECT COUNT(*) FROM transactions", lignes=None):
@@ -65,7 +94,7 @@ class TestRepondre(unittest.TestCase):
 
         mock_result = MagicMock()
         mock_result.keys.return_value = ["total"]
-        mock_result.fetchall.return_value = lignes or [(42,)]
+        mock_result.fetchmany.return_value = lignes or [(42,)]
 
         mock_conn = MagicMock()
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
