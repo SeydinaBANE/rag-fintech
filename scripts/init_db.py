@@ -19,10 +19,16 @@ from alembic.config import Config
 from dotenv import load_dotenv
 from psycopg2 import sql
 
-from rag.logging_config import configure_logging
-
 load_dotenv()
-configure_logging()
+
+# Pas d'import depuis le package rag : ce script est invoqué en `python
+# scripts/init_db.py` (Fly release_command, docker-compose, make db-init),
+# où le répertoire du script — pas la racine du repo — est sur sys.path,
+# donc `from rag...` échouerait avec ModuleNotFoundError.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -65,6 +71,12 @@ for stmt in sql_script.split(";"):
 
 alembic_cfg = Config(str(REPO_ROOT / "alembic.ini"))
 command.upgrade(alembic_cfg, "head")
+# alembic.ini's fileConfig (loaded internally by migrations/env.py) runs
+# with disable_existing_loggers=True by default, which disables our own
+# logger (it existed before fileConfig ran) and resets the root level to
+# WARNING — restore both so the logs below aren't silently dropped.
+logging.getLogger().setLevel(os.getenv("LOG_LEVEL", "INFO"))
+logger.disabled = False
 logger.info("Alembic migrations applied (head).")
 
 readonly_password = os.getenv("READONLY_DB_PASSWORD")

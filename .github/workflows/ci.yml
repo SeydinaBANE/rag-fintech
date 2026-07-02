@@ -88,3 +88,52 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  integration:
+    name: Integration tests (real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: fintech
+          POSTGRES_USER: fintech_admin
+          POSTGRES_PASSWORD: ci_admin_pw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fintech_admin -d fintech"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: fintech
+      DB_USER: fintech_admin
+      DB_PASSWORD: ci_admin_pw
+      READONLY_DB_PASSWORD: ci_readonly_pw
+      RUN_INTEGRATION_TESTS: "1"
+      OPENROUTER_API_KEY: "test"
+      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Initialize database (schema, migrations, app_readonly role)
+        run: uv run python scripts/init_db.py
+
+      - name: Run integration tests
+        run: uv run pytest tests/test_integration.py -v --tb=short
