@@ -7,9 +7,10 @@ import pandas as pd
 import streamlit as st
 
 from rag.engine import repondre
-from rag.logging_config import configure_logging
+from rag.logging_config import configure_logging, configure_sentry
 
 configure_logging()
+configure_sentry()
 logger = logging.getLogger(__name__)
 
 MAX_TENTATIVES_CONNEXION = 5

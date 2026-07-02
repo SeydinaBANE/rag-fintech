@@ -3,16 +3,18 @@ import os
 import re
 import time
 
+import sentry_sdk
 import sqlparse
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from sqlalchemy import create_engine, text
 
-from rag.logging_config import configure_logging
+from rag.logging_config import configure_logging, configure_sentry
 
 load_dotenv()
 configure_logging()
+configure_sentry()
 
 logger = logging.getLogger(__name__)
 
@@ -188,11 +190,12 @@ def repondre(question: str) -> dict:
             "resultats": [],
             "erreur": "sql_validation_error",
         }
-    except Exception:
+    except Exception as e:
         logger.exception(
             "repondre succes=false erreur=internal_error duree_ms=%d",
             int((time.monotonic() - debut) * 1000),
         )
+        sentry_sdk.capture_exception(e)
         return {
             "reponse": (
                 "Une erreur est survenue lors du traitement de votre question. "
