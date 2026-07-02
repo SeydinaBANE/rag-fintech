@@ -37,6 +37,8 @@ llm = ChatOpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY"),
     base_url=os.getenv("OPENROUTER_BASE_URL"),
     temperature=0,
+    timeout=int(os.getenv("LLM_TIMEOUT_S", "30")),
+    max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
 )
 
 SCHEMA = """

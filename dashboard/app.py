@@ -8,6 +8,7 @@ from rag.engine import repondre
 
 MAX_TENTATIVES_CONNEXION = 5
 DUREE_BLOCAGE_S = 60
+MAX_QUESTIONS_PAR_MINUTE = int(os.getenv("MAX_QUESTIONS_PAR_MINUTE", "10"))
 
 
 def _afficher_sql_resultats(sql, resultats):
@@ -49,6 +50,16 @@ def _authentifie() -> bool:
                 st.session_state["blocage_jusqu_a"] = time.time() + DUREE_BLOCAGE_S
                 st.session_state["tentatives_connexion"] = 0
             st.error("Mot de passe incorrect.")
+    return False
+
+
+def _debit_depasse() -> bool:
+    horodatages = st.session_state.setdefault("horodatages_questions", [])
+    il_y_a_1_min = time.time() - 60
+    horodatages[:] = [t for t in horodatages if t > il_y_a_1_min]
+    if len(horodatages) >= MAX_QUESTIONS_PAR_MINUTE:
+        return True
+    horodatages.append(time.time())
     return False
 
 
@@ -102,7 +113,11 @@ if "question_auto" in st.session_state:
     question = st.session_state.question_auto
     del st.session_state.question_auto
 
-if question:
+if question and _debit_depasse():
+    st.warning(
+        f"Trop de questions envoyées (max {MAX_QUESTIONS_PAR_MINUTE}/minute). Patientez un peu."
+    )
+elif question:
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)

@@ -3,8 +3,16 @@ from unittest.mock import MagicMock, patch
 
 # Patch les dépendances externes avant l'import du module
 # pour éviter les connexions réelles à la DB et à l'API LLM
-with patch("sqlalchemy.create_engine"), patch("langchain_openai.ChatOpenAI"):
+with patch("sqlalchemy.create_engine"), patch("langchain_openai.ChatOpenAI") as MockChatOpenAI:
     import rag.engine as engine_module
+
+
+class TestConfigurationLLM(unittest.TestCase):
+    def test_llm_configure_avec_timeout_et_retries(self):
+        _, kwargs = MockChatOpenAI.call_args
+        self.assertIn("timeout", kwargs)
+        self.assertIn("max_retries", kwargs)
+        self.assertGreater(kwargs["timeout"], 0)
 
 
 class TestGenererSQL(unittest.TestCase):
