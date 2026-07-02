@@ -106,5 +106,6 @@ Two workflows in `.github/workflows/`:
 
 - All LLM prompts and responses are in French.
 - `chromadb` appears in some references but is **not used** — there is no vector retrieval step.
-- Tests mock both `sqlalchemy.create_engine` and `langchain_openai.ChatOpenAI` at import time (before `rag.engine` loads) so no live connections are needed to run the test suite.
+- Tests mock both `sqlalchemy.create_engine` and `langchain_openai.ChatOpenAI` at import time (before `rag.engine` loads) so no live connections are needed to run the test suite. Test classes use `unittest.TestCase`, not bare pytest functions; `TestRepondre` swaps `engine_module.llm`/`engine_module.engine` per test rather than re-mocking at import time.
 - The SQL generation prompt enforces `LIMIT 20` and `ROUND(...::numeric, 0)` for amounts — preserve these rules when editing `generer_sql()`.
+- Ruff (`pyproject.toml`) targets py311, line-length 100, rules `E, F, I, UP` with `E501` ignored — don't wrap lines just to satisfy a line-length check that's disabled.
