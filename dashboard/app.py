@@ -81,6 +81,9 @@ if not _authentifie():
 
 st.title("🤖 Assistant IA Fintech")
 st.caption("Posez vos questions en langage naturel sur vos données financières")
+st.caption(
+    "⚠️ Données de démonstration synthétiques — non représentatives d'un contexte de production réel."
+)
 
 # ── QUESTIONS SUGGÉRÉES ──
 st.sidebar.header("💡 Questions suggérées")

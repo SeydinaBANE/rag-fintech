@@ -120,6 +120,8 @@ Ouvre [http://localhost:8502](http://localhost:8502)
 
 > La base de données est initialisée automatiquement avec le schéma et des données de test via `init.sql`.
 > Pour utiliser tes propres données, remplace `init.sql` par un export `pg_dump` de ta base.
+>
+> ⚠️ Les données fournies (8 utilisateurs, 15 transactions) sont synthétiques et servent uniquement à la démonstration — elles ne sont pas représentatives d'un volume ou d'un contexte de production réel.
 
 ---
 

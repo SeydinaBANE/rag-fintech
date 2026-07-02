@@ -171,6 +171,8 @@ alertes_fraude
   rapport_llm (TEXT), created_at
 ```
 
+> **Données de démonstration synthétiques** — `init.sql` seed 8 utilisateurs et 15 transactions fictives. Ce volume et ces valeurs ne sont pas représentatifs d'une charge ou d'un jeu de données de production réel.
+
 ### Contraintes importantes
 
 | Table | Colonne | Contrainte |
