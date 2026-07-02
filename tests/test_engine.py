@@ -126,12 +126,22 @@ class TestRepondre(unittest.TestCase):
         result = engine_module.repondre("Combien de fraudes ?")
         self.assertIsNone(result["erreur"])
 
-    def test_gere_une_erreur_llm(self):
+    def test_gere_une_erreur_llm_sans_fuite_de_details(self):
         engine_module.llm = MagicMock()
-        engine_module.llm.invoke.side_effect = Exception("API indisponible")
+        engine_module.llm.invoke.side_effect = Exception("API indisponible : détail interne")
         result = engine_module.repondre("Question impossible")
-        self.assertIsNotNone(result["erreur"])
-        self.assertIn("Erreur", result["reponse"])
+        self.assertEqual(result["erreur"], "internal_error")
+        self.assertNotIn("détail interne", result["reponse"])
+        self.assertEqual(result["resultats"], [])
+        self.assertIsNone(result["sql"])
+
+    def test_gere_une_requete_sql_rejetee_sans_fuite_de_details(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content="DROP TABLE users")
+        engine_module.llm = mock_llm
+        result = engine_module.repondre("Question malveillante")
+        self.assertEqual(result["erreur"], "sql_validation_error")
+        self.assertNotIn("DROP TABLE", result["reponse"])
         self.assertEqual(result["resultats"], [])
         self.assertIsNone(result["sql"])
 

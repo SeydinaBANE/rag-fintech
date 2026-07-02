@@ -141,12 +141,22 @@ def repondre(question: str) -> dict:
         resultats = executer_sql(sql)
         reponse = formuler_reponse(question, sql, resultats)
         return {"reponse": reponse, "sql": sql, "resultats": resultats, "erreur": None}
-    except Exception as e:
+    except SQLValidationError:
         return {
-            "reponse": f"Je n'ai pas pu répondre à cette question. Erreur : {str(e)}",
+            "reponse": "Cette question nécessite une opération non autorisée.",
             "sql": None,
             "resultats": [],
-            "erreur": str(e),
+            "erreur": "sql_validation_error",
+        }
+    except Exception:
+        return {
+            "reponse": (
+                "Une erreur est survenue lors du traitement de votre question. "
+                "Veuillez réessayer ou reformuler."
+            ),
+            "sql": None,
+            "resultats": [],
+            "erreur": "internal_error",
         }
 
 
