@@ -1,7 +1,13 @@
+import os
+import time
+
 import pandas as pd
 import streamlit as st
 
 from rag.engine import repondre
+
+MAX_TENTATIVES_CONNEXION = 5
+DUREE_BLOCAGE_S = 60
 
 
 def _afficher_sql_resultats(sql, resultats):
@@ -13,7 +19,43 @@ def _afficher_sql_resultats(sql, resultats):
             st.dataframe(pd.DataFrame(resultats))
 
 
+def _authentifie() -> bool:
+    mot_de_passe_attendu = os.getenv("DASHBOARD_PASSWORD")
+    if not mot_de_passe_attendu:
+        return True
+
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.session_state.setdefault("tentatives_connexion", 0)
+    st.session_state.setdefault("blocage_jusqu_a", 0.0)
+
+    st.title("🔒 Connexion requise")
+
+    if time.time() < st.session_state["blocage_jusqu_a"]:
+        restant = int(st.session_state["blocage_jusqu_a"] - time.time())
+        st.error(f"Trop de tentatives. Réessayez dans {restant}s.")
+        return False
+
+    mot_de_passe = st.text_input("Mot de passe", type="password")
+    if st.button("Se connecter"):
+        if mot_de_passe == mot_de_passe_attendu:
+            st.session_state["authenticated"] = True
+            st.session_state["tentatives_connexion"] = 0
+            st.rerun()
+        else:
+            st.session_state["tentatives_connexion"] += 1
+            if st.session_state["tentatives_connexion"] >= MAX_TENTATIVES_CONNEXION:
+                st.session_state["blocage_jusqu_a"] = time.time() + DUREE_BLOCAGE_S
+                st.session_state["tentatives_connexion"] = 0
+            st.error("Mot de passe incorrect.")
+    return False
+
+
 st.set_page_config(page_title="Assistant IA Fintech", page_icon="🤖", layout="wide")
+
+if not _authentifie():
+    st.stop()
 
 st.title("🤖 Assistant IA Fintech")
 st.caption("Posez vos questions en langage naturel sur vos données financières")
@@ -36,11 +78,7 @@ for s in suggestions:
         st.session_state.question_auto = s
 
 st.sidebar.divider()
-st.sidebar.markdown("**Stack technique**")
-st.sidebar.markdown("- Claude Haiku (OpenRouter)")
-st.sidebar.markdown("- LangChain")
-st.sidebar.markdown("- PostgreSQL")
-st.sidebar.markdown("- Streamlit")
+st.sidebar.caption("🤖 Propulsé par IA")
 
 # ── HISTORIQUE ──
 if "messages" not in st.session_state:

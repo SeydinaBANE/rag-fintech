@@ -81,7 +81,11 @@ DB_PORT=5433
 DB_NAME=fintech
 DB_USER=
 DB_PASSWORD=
+READONLY_DB_PASSWORD=
+DASHBOARD_PASSWORD=
 ```
+
+`DASHBOARD_PASSWORD` gates `dashboard/app.py` behind a shared-password screen (`st.session_state.authenticated`, 5-attempt lockout per browser session). If unset, the dashboard is open with no login — acceptable for local dev only. Set it via `fly secrets set DASHBOARD_PASSWORD=...` before any public deploy.
 
 ## CI/CD (GitHub Actions)
 
