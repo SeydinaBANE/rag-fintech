@@ -91,9 +91,11 @@ DASHBOARD_PASSWORD=
 
 Two workflows in `.github/workflows/`:
 
-- **`ci.yml`** — triggers on every push and PR to `main`. Two parallel jobs:
+- **`ci.yml`** — triggers on every push and PR to `main`. Parallel jobs:
   - `lint` — `ruff check` + `ruff format --check`
   - `test` — `pytest --cov=rag --cov-fail-under=70` (coverage minimum 70 %, no live DB or API needed)
+  - `security` — `uv run pip-audit` against the resolved `uv.lock`, fails on any known CVE in a dependency (direct or transitive). Fix by bumping the affected package (`uv lock --upgrade-package <name>` or a broader `uv lock --upgrade` if several are affected) — verify `make check` still passes after, since transitive bumps can shift behavior.
+  - `gitleaks` — `gitleaks/gitleaks-action@v2` scans the full push/PR diff for hardcoded secrets (API keys, passwords, connection strings). Complements GitHub's native secret scanning + push protection, which should also be enabled under repo Settings → Code security (this repo is public — that feature is free and needs no workflow file).
 - **`cd.yml`** — triggers via `workflow_run` on CI completion (only if CI succeeded) and on published releases. Three sequential jobs:
   1. `build-push` — builds Docker image, pushes to `ghcr.io/seydinabane/rag-fintech`. Uses `GITHUB_TOKEN`. Tags: `main`, `sha-<short>`, semver on releases.
   2. `deploy` — pulls the image from GHCR, deploys to Fly.io via `flyctl deploy --image`, then smoke-tests `https://rag-fintech.fly.dev/_stcore/health` (up to 10 retries, 10s apart) — fails the workflow run if the deploy doesn't come up healthy. Requires `FLY_API_TOKEN` secret + `production` environment on GitHub.
