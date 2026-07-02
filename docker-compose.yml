@@ -9,6 +9,9 @@ services:
       # Overrides .env pour pointer vers le service postgres interne
       DB_HOST: postgres
       DB_PORT: "5432"
+    command: >
+      sh -c "python scripts/init_db.py &&
+             streamlit run dashboard/app.py --server.port 8502 --server.address 0.0.0.0"
     depends_on:
       postgres:
         condition: service_healthy

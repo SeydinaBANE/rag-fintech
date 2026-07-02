@@ -6,6 +6,7 @@ Creates tables if they don't exist; seeds data only when tables are empty.
 """
 
 import os
+from pathlib import Path
 from urllib.parse import urlparse
 
 import psycopg2
@@ -13,6 +14,8 @@ from dotenv import load_dotenv
 from psycopg2 import sql
 
 load_dotenv()
+
+INIT_SQL_PATH = Path(__file__).resolve().parent.parent / "init.sql"
 
 db_url = os.getenv("DATABASE_URL") or (
     f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
@@ -37,10 +40,10 @@ if table_exists:
     cur.execute("SELECT COUNT(*) FROM users")
     already_seeded = cur.fetchone()[0] > 0
 
-with open("/app/init.sql") as f:
-    sql = f.read()
+with open(INIT_SQL_PATH) as f:
+    sql_script = f.read()
 
-for stmt in sql.split(";"):
+for stmt in sql_script.split(";"):
     stmt = stmt.strip()
     if not stmt or stmt.startswith("--"):
         continue

@@ -1,13 +1,16 @@
-.PHONY: install dev test coverage lint format check db-up db-down db-reset run docker-up docker-down fly-deploy fly-logs fly-ssh
+.PHONY: install dev test coverage lint format check db-up db-down db-reset db-init run docker-up docker-down fly-deploy fly-logs fly-ssh
 
 install:
 	uv sync --all-groups
 	uv run pre-commit install
 
-dev: db-up run
+dev: db-up db-init run
 
 run:
 	uv run streamlit run dashboard/app.py --server.port 8502
+
+db-init:
+	uv run python scripts/init_db.py
 
 test:
 	uv run pytest -v
@@ -25,7 +28,7 @@ format:
 check: lint test
 
 db-up:
-	docker compose up -d postgres
+	docker compose up -d --wait postgres
 
 db-down:
 	docker compose stop postgres
