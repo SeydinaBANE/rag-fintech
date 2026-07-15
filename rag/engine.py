@@ -1,15 +1,14 @@
 import logging
 import os
-import re
-import time
 
-import sentry_sdk
-import sqlparse
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
+from rag.adapters.openrouter_llm_adapter import OpenRouterLLMAdapter
+from rag.adapters.postgres_sql_executor_adapter import PostgresSQLExecutorAdapter
+from rag.application.rag_service import RagService, ReponseRAG
+from rag.domain.schema import SCHEMA
 from rag.logging_config import configure_logging, configure_sentry
 
 load_dotenv()
@@ -17,15 +16,6 @@ configure_logging()
 configure_sentry()
 
 logger = logging.getLogger(__name__)
-
-
-class SQLValidationError(Exception):
-    pass
-
-
-class QuestionTropLongueError(Exception):
-    pass
-
 
 MAX_QUESTION_LENGTH = int(os.getenv("MAX_QUESTION_LENGTH", "1000"))
 
@@ -43,11 +33,6 @@ engine = create_engine(DB_URL)
 MAX_SQL_ROWS = int(os.getenv("MAX_SQL_ROWS", "20"))
 SQL_STATEMENT_TIMEOUT_MS = int(os.getenv("SQL_STATEMENT_TIMEOUT_MS", "5000"))
 
-_MOTS_CLES_INTERDITS = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|CALL|EXECUTE)\b",
-    re.IGNORECASE,
-)
-
 llm = ChatOpenAI(
     model="anthropic/claude-haiku-4-5",
     api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -57,178 +42,17 @@ llm = ChatOpenAI(
     max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
 )
 
-SCHEMA = """
-Base de données fintech PostgreSQL. Tables disponibles :
-
-1. users (id, nom, email, pays, telephone, created_at)
-2. comptes (id, user_id, numero, type_compte, solde, created_at)
-3. transactions (id, compte_id, type_tx, montant, pays_origine, pays_destination, heure, est_fraude, score_fraude, created_at)
-4. alertes_fraude (id, transaction_id, niveau, rapport_llm, created_at)
-
-Relations :
-- comptes.user_id → users.id
-- transactions.compte_id → comptes.id
-- alertes_fraude.transaction_id → transactions.id
-
-Valeurs importantes :
-- est_fraude : 0 = normal, 1 = fraude
-- type_tx : transfert, paiement, retrait, depot
-- heure : 0-23
-"""
+llm_adapter = OpenRouterLLMAdapter(client=llm, schema=SCHEMA)
+sql_executor_adapter = PostgresSQLExecutorAdapter(
+    engine=engine, max_rows=MAX_SQL_ROWS, statement_timeout_ms=SQL_STATEMENT_TIMEOUT_MS
+)
+_service = RagService(
+    llm=llm_adapter, sql_executor=sql_executor_adapter, max_question_length=MAX_QUESTION_LENGTH
+)
 
 
-def _apercu(texte: str, longueur: int = 80) -> str:
-    return texte[:longueur] + ("…" if len(texte) > longueur else "")
-
-
-def generer_sql(question: str) -> str:
-    if len(question) > MAX_QUESTION_LENGTH:
-        logger.warning("generer_sql rejet raison=question_trop_longue longueur=%d", len(question))
-        raise QuestionTropLongueError(
-            f"La question dépasse la longueur maximale autorisée ({MAX_QUESTION_LENGTH} caractères)."
-        )
-
-    debut = time.monotonic()
-    messages = [
-        SystemMessage(
-            content=f"""Tu es un expert SQL PostgreSQL.
-À partir du schéma suivant, génère UNIQUEMENT la requête SQL qui répond à la question.
-Ne génère que le SQL brut, sans explication, sans ```sql, sans backticks.
-
-{SCHEMA}
-
-Règles :
-- Utilise toujours des alias clairs
-- Limite les résultats à 20 lignes max avec LIMIT 20
-- Pour les montants, utilise ROUND(...::numeric, 0)
-- Pour les pourcentages, multiplie par 100
-"""
-        ),
-        HumanMessage(content=question),
-    ]
-    response = llm.invoke(messages)
-    sql = response.content.strip()
-    logger.info(
-        "generer_sql question_len=%d question_apercu=%r duree_ms=%d sql=%r",
-        len(question),
-        _apercu(question),
-        int((time.monotonic() - debut) * 1000),
-        sql,
-    )
-    return sql
-
-
-def valider_sql(sql: str) -> str:
-    statements = [s for s in sqlparse.parse(sql) if str(s).strip()]
-    if len(statements) != 1:
-        logger.warning("valider_sql rejet raison=instructions_multiples sql=%r", sql)
-        raise SQLValidationError("La requête doit contenir une seule instruction SQL.")
-
-    statement = statements[0]
-    if statement.get_type() != "SELECT":
-        logger.warning("valider_sql rejet raison=non_select sql=%r", sql)
-        raise SQLValidationError("Seules les requêtes SELECT sont autorisées.")
-
-    corps = str(statement).strip().rstrip(";")
-    if ";" in corps:
-        logger.warning("valider_sql rejet raison=point_virgule_interne sql=%r", sql)
-        raise SQLValidationError("Les requêtes multiples ne sont pas autorisées.")
-    if _MOTS_CLES_INTERDITS.search(corps):
-        logger.warning("valider_sql rejet raison=mot_cle_interdit sql=%r", sql)
-        raise SQLValidationError("La requête contient une opération non autorisée.")
-
-    return corps
-
-
-def executer_sql(sql: str) -> list:
-    debut = time.monotonic()
-    sql_valide = valider_sql(sql)
-    requete_plafonnee = text(f"SELECT * FROM ({sql_valide}) AS _capped LIMIT :max_rows")
-
-    with engine.connect() as conn:
-        conn.execute(text(f"SET statement_timeout = {SQL_STATEMENT_TIMEOUT_MS}"))
-        result = conn.execute(requete_plafonnee, {"max_rows": MAX_SQL_ROWS})
-        columns = list(result.keys())
-        rows = [dict(zip(columns, row)) for row in result.fetchmany(MAX_SQL_ROWS)]
-
-    logger.info(
-        "executer_sql duree_ms=%d lignes=%d",
-        int((time.monotonic() - debut) * 1000),
-        len(rows),
-    )
-    return rows
-
-
-def formuler_reponse(question: str, sql: str, resultats: list) -> str:
-    debut = time.monotonic()
-    messages = [
-        SystemMessage(
-            content="""Tu es un assistant analyste financier pour une fintech africaine.
-Tu reçois une question, la requête SQL exécutée et les résultats.
-Formule une réponse claire, professionnelle et concise en français.
-Inclus les chiffres clés. Sois direct et précis."""
-        ),
-        HumanMessage(
-            content=f"""Question : {question}
-
-SQL exécuté : {sql}
-
-Résultats : {resultats}
-
-Formule une réponse naturelle et professionnelle."""
-        ),
-    ]
-    response = llm.invoke(messages)
-    reponse = response.content.strip()
-    logger.info("formuler_reponse duree_ms=%d", int((time.monotonic() - debut) * 1000))
-    return reponse
-
-
-def repondre(question: str) -> dict:
-    debut = time.monotonic()
-    try:
-        sql = generer_sql(question)
-        resultats = executer_sql(sql)
-        reponse = formuler_reponse(question, sql, resultats)
-        logger.info("repondre succes=true duree_ms=%d", int((time.monotonic() - debut) * 1000))
-        return {"reponse": reponse, "sql": sql, "resultats": resultats, "erreur": None}
-    except SQLValidationError:
-        logger.info(
-            "repondre succes=false erreur=sql_validation_error duree_ms=%d",
-            int((time.monotonic() - debut) * 1000),
-        )
-        return {
-            "reponse": "Cette question nécessite une opération non autorisée.",
-            "sql": None,
-            "resultats": [],
-            "erreur": "sql_validation_error",
-        }
-    except QuestionTropLongueError:
-        logger.info(
-            "repondre succes=false erreur=question_trop_longue duree_ms=%d",
-            int((time.monotonic() - debut) * 1000),
-        )
-        return {
-            "reponse": f"Votre question dépasse {MAX_QUESTION_LENGTH} caractères. Reformulez-la plus brièvement.",
-            "sql": None,
-            "resultats": [],
-            "erreur": "question_trop_longue",
-        }
-    except Exception as e:
-        logger.exception(
-            "repondre succes=false erreur=internal_error duree_ms=%d",
-            int((time.monotonic() - debut) * 1000),
-        )
-        sentry_sdk.capture_exception(e)
-        return {
-            "reponse": (
-                "Une erreur est survenue lors du traitement de votre question. "
-                "Veuillez réessayer ou reformuler."
-            ),
-            "sql": None,
-            "resultats": [],
-            "erreur": "internal_error",
-        }
+def repondre(question: str) -> ReponseRAG:
+    return _service.repondre(question)
 
 
 if __name__ == "__main__":

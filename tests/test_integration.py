@@ -4,6 +4,8 @@ import unittest
 from sqlalchemy import text
 
 import rag.engine as engine_module
+from rag.domain.exceptions import SQLValidationError
+from rag.domain.validation import valider_sql
 
 _INTEGRATION_ENABLED = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 _SKIP_REASON = "set RUN_INTEGRATION_TESTS=1 to run against a real Postgres"
@@ -12,21 +14,23 @@ _SKIP_REASON = "set RUN_INTEGRATION_TESTS=1 to run against a real Postgres"
 @unittest.skipUnless(_INTEGRATION_ENABLED, _SKIP_REASON)
 class TestExecuterSQLContreVraiePostgres(unittest.TestCase):
     def test_select_simple_fonctionne(self):
-        rows = engine_module.executer_sql("SELECT COUNT(*) AS total FROM users")
+        sql = valider_sql("SELECT COUNT(*) AS total FROM users")
+        rows = engine_module.sql_executor_adapter.executer_sql(sql)
         self.assertEqual(len(rows), 1)
         self.assertIn("total", rows[0])
 
     def test_plafond_de_lignes_est_applique(self):
-        rows = engine_module.executer_sql("SELECT generate_series(1, 100) AS n")
+        sql = valider_sql("SELECT generate_series(1, 100) AS n")
+        rows = engine_module.sql_executor_adapter.executer_sql(sql)
         self.assertEqual(len(rows), engine_module.MAX_SQL_ROWS)
 
     def test_drop_table_rejete_avant_execution(self):
-        with self.assertRaises(engine_module.SQLValidationError):
-            engine_module.executer_sql("DROP TABLE users")
+        with self.assertRaises(SQLValidationError):
+            valider_sql("DROP TABLE users")
 
     def test_multi_statement_rejete_avant_execution(self):
-        with self.assertRaises(engine_module.SQLValidationError):
-            engine_module.executer_sql("SELECT 1; DELETE FROM users")
+        with self.assertRaises(SQLValidationError):
+            valider_sql("SELECT 1; DELETE FROM users")
 
 
 @unittest.skipUnless(_INTEGRATION_ENABLED, _SKIP_REASON)

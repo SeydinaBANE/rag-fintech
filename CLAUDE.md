@@ -17,6 +17,13 @@ make test              # uv run pytest -v
 make coverage          # pytest --cov=rag --cov-report=term-missing --cov-fail-under=70 + HTML in htmlcov/
 uv run pytest tests/test_engine.py -v   # single file
 
+# Integration tests (needs a live Postgres — see tests/test_integration.py; skipped by make test/coverage)
+RUN_INTEGRATION_TESTS=1 uv run pytest tests/test_integration.py -v
+
+# Bootstrap DB + run app in one step (db-up + init_db.py + streamlit)
+make dev               # db-up db-init run
+make db-init           # uv run python scripts/init_db.py (tables, seed, alembic upgrade, app_readonly)
+
 # Lint + format
 make lint              # ruff check
 make format            # ruff format
@@ -52,8 +59,16 @@ User question
   → repondre()      — wraps the above, catches all exceptions, returns {reponse, sql, resultats, erreur}
 ```
 
-**Key files:**
-- `rag/engine.py` — entire RAG logic. The `SCHEMA` constant is the only DB context the LLM sees; keep it in sync with `init.sql` if the schema changes.
+Hexagonal layering — `rag/domain` has no dependency on `rag/application` or `rag/adapters`; `rag/application` depends only on `rag/domain` and the `Protocol`s in `rag/application/ports.py`; `rag/adapters` implements those ports against real libraries (LangChain, SQLAlchemy):
+
+- `rag/domain/schema.py` — the `SCHEMA` constant, the only DB context the LLM sees; keep it in sync with `init.sql` if the schema changes.
+- `rag/domain/validation.py` — `valider_sql()` (SELECT-only, single-statement enforcement) and `valider_longueur_question()`. Pure functions, no I/O.
+- `rag/domain/exceptions.py` — `SQLValidationError`, `QuestionTropLongueError`.
+- `rag/application/ports.py` — `LLMPort`/`SQLExecutorPort` Protocols that adapters implement and `RagService` depends on.
+- `rag/application/rag_service.py` — `RagService.repondre()`, the orchestration in the Architecture diagram above (validate → generate SQL → validate SQL → execute → formulate answer), catching exceptions and reporting them to Sentry.
+- `rag/adapters/openrouter_llm_adapter.py` — `OpenRouterLLMAdapter`, implements `LLMPort` via a LangChain `BaseChatModel`.
+- `rag/adapters/postgres_sql_executor_adapter.py` — `PostgresSQLExecutorAdapter`, implements `SQLExecutorPort` via SQLAlchemy (`LIMIT`-wrapping, per-connection `statement_timeout`).
+- `rag/engine.py` — composition root: loads env, builds the `ChatOpenAI` client and SQLAlchemy `engine`, wires the adapters into a `RagService`, and exposes the module-level `repondre()` that `dashboard/app.py` and `scripts/init_db.py`-adjacent callers import.
 - `dashboard/app.py` — Streamlit chat UI. Session state holds the full message history including raw SQL and result dicts for each assistant turn (rendered in collapsible expanders).
 - `init.sql` — schema DDL + seed data. Auto-executed by Docker on first container start.
 
@@ -83,9 +98,24 @@ DB_USER=
 DB_PASSWORD=
 READONLY_DB_PASSWORD=
 DASHBOARD_PASSWORD=
+
+# Optional — cost/abuse guardrails, all have safe defaults if unset
+LLM_TIMEOUT_S=30
+LLM_MAX_RETRIES=2
+MAX_QUESTIONS_PAR_MINUTE=10
+MAX_SQL_ROWS=20
+SQL_STATEMENT_TIMEOUT_MS=5000
+MAX_QUESTION_LENGTH=1000
+
+# Optional — error reporting
+SENTRY_DSN=
 ```
 
 `DASHBOARD_PASSWORD` gates `dashboard/app.py` behind a shared-password screen (`st.session_state.authenticated`, 5-attempt lockout per browser session). If unset, the dashboard is open with no login — acceptable for local dev only. Set it via `fly secrets set DASHBOARD_PASSWORD=...` before any public deploy.
+
+`MAX_QUESTIONS_PAR_MINUTE` is enforced in `dashboard/app.py` (per-browser-session sliding window over `st.session_state` timestamps), not in `rag/engine.py` — a direct call to `repondre()` outside the dashboard isn't rate-limited. The other guardrails (`LLM_TIMEOUT_S`/`LLM_MAX_RETRIES` on the `ChatOpenAI` client, `MAX_SQL_ROWS`/`SQL_STATEMENT_TIMEOUT_MS`/`MAX_QUESTION_LENGTH` in `rag/engine.py`) apply regardless of entrypoint.
+
+`SENTRY_DSN`, if set, enables `rag/logging_config.py`'s `configure_sentry()` (called once per entrypoint alongside `configure_logging()`), which reports uncaught exceptions from the `except Exception` branch of `repondre()`. Initialized with `include_local_variables=False` — stack-frame locals (which could include generated SQL or query results) are never sent to Sentry.
 
 ## CI/CD (GitHub Actions)
 
@@ -134,7 +164,7 @@ Fly Postgres takes automated daily snapshots with Fly-managed retention. List/re
 
 - All LLM prompts and responses are in French.
 - `chromadb` appears in some references but is **not used** — there is no vector retrieval step.
-- Tests mock both `sqlalchemy.create_engine` and `langchain_openai.ChatOpenAI` at import time (before `rag.engine` loads) so no live connections are needed to run the test suite. Test classes use `unittest.TestCase`, not bare pytest functions; `TestRepondre` swaps `engine_module.llm`/`engine_module.engine` per test rather than re-mocking at import time.
-- The SQL generation prompt enforces `LIMIT 20` and `ROUND(...::numeric, 0)` for amounts — preserve these rules when editing `generer_sql()`.
+- Tests mirror the `rag/domain`, `rag/application`, `rag/adapters` layering (`tests/domain/`, `tests/application/`, `tests/adapters/`), each testing its layer against fakes/mocks of the ports it depends on — no live DB or LLM connections needed. `tests/test_engine.py` covers only the composition root: `TestConfigurationLLM` inspects the `ChatOpenAI` mock's call args, `TestRepondre` patches `engine_module._service` with a `MagicMock` to verify `repondre()` delegates to it. All test classes use `unittest.TestCase`, not bare pytest functions. Tests still mock both `sqlalchemy.create_engine` and `langchain_openai.ChatOpenAI` at import time (before `rag.engine` loads). `tests/test_logging_config.py` mocks `rag.logging_config.sentry_sdk.init` rather than hitting the network.
+- The SQL generation prompt enforces `LIMIT 20` and `ROUND(...::numeric, 0)` for amounts — preserve these rules when editing `OpenRouterLLMAdapter.generer_sql()` (`rag/adapters/openrouter_llm_adapter.py`).
 - Ruff (`pyproject.toml`) targets py311, line-length 100, rules `E, F, I, UP` with `E501` ignored — don't wrap lines just to satisfy a line-length check that's disabled.
-- Structured logging (`rag/logging_config.py`, stdlib `logging`) is configured once per entrypoint (`rag/engine.py`, `dashboard/app.py`, `scripts/init_db.py`) via `configure_logging()`. `LOG_LEVEL` env var controls verbosity (default `INFO`). Questions are logged truncated (~80 chars via `rag.engine._apercu`), never in full — treat free-text questions as potentially containing PII. **Never log** `OPENROUTER_API_KEY`, `DB_PASSWORD`, `READONLY_DB_PASSWORD`, `DASHBOARD_PASSWORD`, or a full `DATABASE_URL`/`DB_URL` (password embedded).
+- Structured logging (`rag/logging_config.py`, stdlib `logging`) is configured once per entrypoint (`rag/engine.py`, `dashboard/app.py`, `scripts/init_db.py`) via `configure_logging()`. `LOG_LEVEL` env var controls verbosity (default `INFO`). Questions are logged truncated (~80 chars via `_apercu()` in `rag/adapters/openrouter_llm_adapter.py`), never in full — treat free-text questions as potentially containing PII. **Never log** `OPENROUTER_API_KEY`, `DB_PASSWORD`, `READONLY_DB_PASSWORD`, `DASHBOARD_PASSWORD`, or a full `DATABASE_URL`/`DB_URL` (password embedded).
